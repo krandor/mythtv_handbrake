@@ -502,9 +502,12 @@ my $videoQuality = ($quality) ? $quality : $videoQualityDefault;
 toLog("Starting handbrake", "INFO");
 $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'HandBrakeCLI'} . ' -i ' . $fileDir . '/' . $fileName
         . ' -o ' . $workDir . '/' . $fileName . '.handbrake.mkv -a ' . $audioTracks . ' -E ' . $audioCodecs . ' -B ' . $audioBitrates
-        . ' -A ' . $audioLanguages . ' -f mkv -e ' . $encoding . ' -q ' . $videoQuality . ' -x ref=2:bframes=2:subme=6:mixed-refs=0:weightb=0:8x8dct=0:trellis=0:threads=' . $threads . ' -2 -T -d slower -s scan -F';
+        . ' -A ' . $audioLanguages . ' -f mkv -e ' . $encoding . ' -q ' . $videoQuality
+        . ' -x ref=2:bframes=2:subme=6:mixed-refs=0:weightb=0:8x8dct=0:trellis=0:threads=' . $threads . ' -2'
+        . ' -5 -7';
+$cmd    .= ' -T' if($encoding eq "x264");
 $cmd    .= ' --crop 0:0:0:0' if ($noCrop);
-$cmd    .= ' -N ' . $prefLang . ' --native-dub 2>&1';
+$cmd    .= ' -s scan -F -N ' . $prefLang . ' --native-dub 2>&1';
 toLog("Executing: $cmd", "VERB") if ($verbose);
 
 $output = `$cmd`;
