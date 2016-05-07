@@ -4,9 +4,10 @@
 ######################################################################################################
 ###                                                                                                ###
 ### User Job for MythTV                                                                            ###
-### Take recording and encode to smaller size                                                      ###
+### Take recording and encode to smaller size													   ###
+###														                                           ###
 ### This script will at some point flag commercials and generate a cut list, but that is           ###
-### unstable at this time.                                                                         ###
+### unstable at this time. For now, just re-encode with HandBrakeCLI                               ###
 ###                                                                                                ###
 ### Start this script with these parameters                                                        ###
 ###                                                                                                ###
@@ -373,132 +374,133 @@ my $audioTracks         = join (',', 1 .. ($#channelAvconvTrackPos + 1));
 toLog("audio tracks: " . $avconvAudioTracks . "\n", "VERB") if ($verbose);
 toLog("audio bitrates: " . $audioBitrates . "\n", "VERB") if ($verbose);
 
-if ( $mediaInfo->{'Codec'} ne 'AVC' )
-{
-    if (-e $workDir . '/' . $chanId . '_' . $startTime . '.m2v')
-    {
-        $videoFilename  = $workDir . '/' . $chanId . '_' . $startTime;
-    }
-    elsif (-e $workDir . '/' . $chanId . '_' . $utcStartTime . '.m2v')
-    {
-        $videoFilename  = $workDir . '/' . $chanId . '_' . $utcStartTime;
-    }
-    else
-    {
-        abnormalExit("Could not identify video track of the recording after demultiplexing.\nNeither \n" . $workDir . "/" . $chanId . "_" . $startTime . ".m2v\nnor\n" . $workDir . "/" . $chanId . "_" . $utcStartTime . ".m2v did match...");
-    }
-
-    ## Start mplex to multiplex streams after cutting
-    toLog("Starting mplex", "INFO");
-    $cmd = 'nice -n ' . $niceValue  . ' ' . $$requiredPrograms{'mplex'} . ' --format 3 --vbr -o ' . $workDir . '/' . $fileName . '.0.ts'
-            . ' ' . $videoFilename . '.m2v ' . $audioFilenames . ' 2>&1';
-    toLog("Executing: $cmd", "INFO") if ($verbose);
-
-    $output = `$cmd`;
-    toLog($output) if ($verbose);
-    abnormalExit("mplex exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
-
-    toLog("mplex finished", "INFO");
-}
-
-my @parts;
-my $part = 0;
-
-if ( $mediaInfo->{'Codec'} eq 'AVC' )
-{
-    ## Now that we have all information we need, let's get to honor the cut list ... and write parts with avconv
-    toLog("Starting avconv cutting out video/audio honoring the cut list", "INFO");
-
-    if (scalar $$cutData{'cutLists'} != 0)
-    {
-        foreach ($$cutData{'cutLists'})
-        {
-            foreach my $cutList (@{$_})
-            {
-                my $start       = $$cutList{'start'};
-                my $duration    = $$cutList{'duration'};
-                my $keyFrames   = $$cutData{'keyFrames'};
-
-                $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'}
-                        . ' -i ' . $fileDir . '/' . $fileName
-                        . ' -force_key_frames ' . $keyFrames
-                        . ' -ss ' . $start
-                        . ' -codec copy'
-                        . ' -t ' . $duration
-                        . ' -y'
-                        . ' -codec:v:0:1 copy -sn ' . $avconvAudioTracks . ' -f mpegts'
-                        . ' ' . $workDir . '/' . $fileName . '.' . $part . '.ts 2>&1';
-                toLog("Executing: $cmd", "VERB") if ($verbose);
-
-                $output = `$cmd`;
-                toLog($output, 'VERB') if ($verbose);
-                abnormalExit("avconv exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
-                push(@parts, $workDir . '/' . $fileName . '.' . $part . '.ts');
-                $part++;
-            }
-        }
-
-    } else {
-
-        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'}
-                . ' -i ' . $fileDir . '/' . $fileName
-                . ' -codec copy'
-                . ' -codec:v:0:1 copy'
-                . ' -sn '
-                . $avconvAudioTracks
-                . ' -f mpegts'
-                . ' -y'
-                . ' ' . $workDir . '/' . $fileName . '.' . $part . '.ts 2>&1';
-        toLog("Executing: $cmd", "VERB") if ($verbose);
-
-        $output = `$cmd`;
-        toLog($output, 'VERB') if ($verbose);
-        abnormalExit("avconv exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
-        push(@parts, $workDir . '/' . $fileName . '.' . $part . '.ts');
-        $part++;
-    }
-}
-
-if ($#parts > 0)
-{
-    if ( $mediaInfo->{'Codec'} eq 'AVC' )
-    {
-        toLog("Concatenating all AVC parts", "INFO");
-
-        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'} . ' -i "concat:' . join ('|', @parts) . '" -c copy ' . $workDir . '/' . $fileName . '.ts 2>&1';
-        toLog("Executing: $cmd", "VERB") if ($verbose);
-
-        $output = `$cmd`;
-        toLog($output, 'VERB') if ($verbose);
-        abnormalExit("AVC concatenation exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
-
-    }## else {
-
-##       toLog("Concatenating all MPG parts", "INFO");
-##
-##       $cmd = 'cat ' . join (' ', @parts) . ' > ' . $workDir . '/' . $fileName . '.ts 2>&1';
-##       toLog("Executing: $cmd", "VERB") if ($verbose);
-##
-##      $output = `$cmd`;
-##       toLog($output, 'VERB') if ($verbose);
-##       abnormalExit("MPG concatenation exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
-##   }
-}
-else
-{
-    $cmd = 'mv ' . $workDir . '/' . $fileName . '.0.ts ' . $workDir . '/' . $fileName . '.ts 2>&1';
-    toLog("Executing: $cmd", "VERB") if ($verbose);
-
-    $output = `$cmd`;
-    toLog($output, 'VERB') if ($verbose);
-    abnormalExit("renaming part 0 file exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
-}
+#if ( $mediaInfo->{'Codec'} ne 'AVC' )
+#{
+#    if (-e $workDir . '/' . $chanId . '_' . $startTime . '.m2v')
+#    {
+#        $videoFilename  = $workDir . '/' . $chanId . '_' . $startTime;
+#    }
+#    elsif (-e $workDir . '/' . $chanId . '_' . $utcStartTime . '.m2v')
+#    {
+#        $videoFilename  = $workDir . '/' . $chanId . '_' . $utcStartTime;
+#    }
+#    else
+#    {
+#        abnormalExit("Could not identify video track of the recording after demultiplexing.\nNeither \n" . $workDir . "/" . $chanId . "_" . $startTime . ".m2v\nnor\n" . $workDir . "/" . $chanId . "_" . $utcStartTime . ".m2v did match...");
+#    }
+#
+#    ## Start mplex to multiplex streams after cutting
+#    toLog("Starting mplex", "INFO");
+#    $cmd = 'nice -n ' . $niceValue  . ' ' . $$requiredPrograms{'mplex'} . ' --format 3 --vbr -o ' . $workDir . '/' . $fileName . '.0.ts'
+#            . ' ' . $videoFilename . '.m2v ' . $audioFilenames . ' 2>&1';
+#    toLog("Executing: $cmd", "INFO") if ($verbose);
+#
+#    $output = `$cmd`;
+#    toLog($output) if ($verbose);
+#    abnormalExit("mplex exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
+#
+#    toLog("mplex finished", "INFO");
+#}
+#
+#my @parts;
+#my $part = 0;
+#
+#if ( $mediaInfo->{'Codec'} eq 'AVC' )
+#{
+#    ## Now that we have all information we need, let's get to honor the cut list ... and write parts with avconv
+#    toLog("Starting ffmpeg cutting out video/audio honoring the cut list", "INFO");
+#
+#    if (scalar $$cutData{'cutLists'} != 0)
+#    {
+#        foreach ($$cutData{'cutLists'})
+#        {
+#            foreach my $cutList (@{$_})
+#            {
+#                my $start       = $$cutList{'start'};
+#                my $duration    = $$cutList{'duration'};
+#                my $keyFrames   = $$cutData{'keyFrames'};
+#
+#                $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'}
+#                        . ' -i ' . $fileDir . '/' . $fileName
+#                        . ' -force_key_frames ' . $keyFrames
+#                        . ' -ss ' . $start
+#                        . ' -codec copy'
+#                        . ' -t ' . $duration
+#                        . ' -y'
+#                        . ' -codec:v:0:1 copy -sn ' . $avconvAudioTracks . ' -f mpegts'
+#                        . ' ' . $workDir . '/' . $fileName . '.' . $part . '.ts 2>&1';
+#                toLog("Executing: $cmd", "VERB") if ($verbose);
+#
+#                $output = `$cmd`;
+#                toLog($output, 'VERB') if ($verbose);
+#                abnormalExit("ffmpeg exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
+#                push(@parts, $workDir . '/' . $fileName . '.' . $part . '.ts');
+#                $part++;
+#            }
+#        }
+#
+#    } else {
+#
+#        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'}
+#                . ' -i ' . $fileDir . '/' . $fileName
+#                . ' -codec copy'
+#                . ' -codec:v:0:1 copy'
+#                . ' -sn '
+#                . ' -b:a ' . ($audioBitrates * 1000)
+#                . $avconvAudioTracks
+#                . ' -f mpegts'
+#                . ' -y'
+#                . ' ' . $workDir . '/' . $fileName . '.' . $part . '.ts 2>&1';
+#        toLog("Executing: $cmd", "VERB") if ($verbose);
+#
+#        $output = `$cmd`;
+#        toLog($output, 'VERB') if ($verbose);
+#        abnormalExit("ffmpeg exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
+#        push(@parts, $workDir . '/' . $fileName . '.' . $part . '.ts');
+#        $part++;
+#    }
+#}
+#
+#if ($#parts > 0)
+#{
+#    if ( $mediaInfo->{'Codec'} eq 'AVC' )
+#    {
+#        toLog("Concatenating all AVC parts", "INFO");
+#
+#        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'} . ' -i "concat:' . join ('|', @parts) . '" -c copy ' . $workDir . '/' . $fileName . '.ts 2>&1';
+#        toLog("Executing: $cmd", "VERB") if ($verbose);
+#
+#        $output = `$cmd`;
+#        toLog($output, 'VERB') if ($verbose);
+#        abnormalExit("AVC concatenation exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
+#
+#    }## else {
+#
+###       toLog("Concatenating all MPG parts", "INFO");
+###
+###       $cmd = 'cat ' . join (' ', @parts) . ' > ' . $workDir . '/' . $fileName . '.ts 2>&1';
+###       toLog("Executing: $cmd", "VERB") if ($verbose);
+###
+###      $output = `$cmd`;
+###       toLog($output, 'VERB') if ($verbose);
+###       abnormalExit("MPG concatenation exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
+###   }
+#}
+#else
+#{
+#    $cmd = 'mv ' . $workDir . '/' . $fileName . '.0.ts ' . $workDir . '/' . $fileName . '.ts 2>&1';
+#    toLog("Executing: $cmd", "VERB") if ($verbose);
+#
+#    $output = `$cmd`;
+#    toLog($output, 'VERB') if ($verbose);
+#    abnormalExit("renaming part 0 file exited with errors, run " . $scriptName . " --verbose and check logfile " . $logFile . " for errors.") if ($? != 0);
+#}
 
 my $videoQuality = ($quality) ? $quality : $videoQualityDefault;
 
 ## Now that we have all information we need, let's get to encode it with handbrake
 toLog("Starting handbrake", "INFO");
-$cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'HandBrakeCLI'} . ' -i ' . $workDir . '/' . $fileName . '.ts'
+$cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'HandBrakeCLI'} . ' -i ' . $fileDir . '/' . $fileName
         . ' -o ' . $workDir . '/' . $fileName . '.handbrake.mkv -a ' . $audioTracks . ' -E ' . $audioCodecs . ' -B ' . $audioBitrates
         . ' -A ' . $audioLanguages . ' -f mkv -e ' . $encoding . ' -q ' . $videoQuality . ' -x ref=2:bframes=2:subme=6:mixed-refs=0:weightb=0:8x8dct=0:trellis=0:threads=' . $threads . ' -2 -T -d slower -s scan -F';
 $cmd    .= ' --crop 0:0:0:0' if ($noCrop);
