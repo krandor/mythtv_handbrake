@@ -237,7 +237,8 @@ my $requiredPrograms = {    "mythtranscode"     => "media-video/mythtv",
                             "HandBrakeCLI"      => "media-video/handbrake",
                             "mkvmerge"          => "media-video/mkvtoolnix",
                             "mediainfo"         => "media-video/mediainfo",
-                            "avconv"            => "media-video/avcodec"
+                            "avconv"            => "media-video/avcodec",
+                            "ffmpeg"            => "media-video/ffmpeg"
                         };
 
 ## If projectx is going to be used ... add requirements
@@ -370,6 +371,7 @@ my $avconvAudioTracks   = join (' ', @channelAvconvTrackPos);
 my $audioTracks         = join (',', 1 .. ($#channelAvconvTrackPos + 1));
 
 toLog("audio tracks: " . $avconvAudioTracks . "\n", "VERB") if ($verbose);
+toLog("audio bitrates: " . $audioBitrates . "\n", "VERB") if ($verbose);
 
 if ( $mediaInfo->{'Codec'} ne 'AVC' )
 {
@@ -417,11 +419,13 @@ if ( $mediaInfo->{'Codec'} eq 'AVC' )
                 my $duration    = $$cutList{'duration'};
                 my $keyFrames   = $$cutData{'keyFrames'};
 
-                $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'avconv'}
+                $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'}
                         . ' -i ' . $fileDir . '/' . $fileName
                         . ' -force_key_frames ' . $keyFrames
                         . ' -ss ' . $start
-                        . ' -codec copy -t ' . $duration . ' -y'
+                        . ' -codec copy'
+                        . ' -t ' . $duration
+                        . ' -y'
                         . ' -codec:v:0:1 copy -sn ' . $avconvAudioTracks . ' -f mpegts'
                         . ' ' . $workDir . '/' . $fileName . '.' . $part . '.ts 2>&1';
                 toLog("Executing: $cmd", "VERB") if ($verbose);
@@ -436,8 +440,13 @@ if ( $mediaInfo->{'Codec'} eq 'AVC' )
 
     } else {
 
-        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'avconv'} . ' -i ' . $fileDir . '/' . $fileName
-                . ' -codec:v:0:1 copy -sn ' . $avconvAudioTracks . ' -f mpegts'
+        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'}
+                . ' -i ' . $fileDir . '/' . $fileName
+                . ' -codec copy'
+                . ' -codec:v:0:1 copy'
+                . ' -sn '
+                . $avconvAudioTracks
+                . ' -f mpegts'
                 . ' -y'
                 . ' ' . $workDir . '/' . $fileName . '.' . $part . '.ts 2>&1';
         toLog("Executing: $cmd", "VERB") if ($verbose);
@@ -456,7 +465,7 @@ if ($#parts > 0)
     {
         toLog("Concatenating all AVC parts", "INFO");
 
-        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'avconv'} . ' -i "concat:' . join ('|', @parts) . '" -c copy ' . $workDir . '/' . $fileName . '.ts 2>&1';
+        $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'ffmpeg'} . ' -i "concat:' . join ('|', @parts) . '" -c copy ' . $workDir . '/' . $fileName . '.ts 2>&1';
         toLog("Executing: $cmd", "VERB") if ($verbose);
 
         $output = `$cmd`;
