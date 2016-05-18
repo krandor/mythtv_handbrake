@@ -1,5 +1,4 @@
 #!/usr/bin/perl
-
 ######################################################################################################
 ######################################################################################################
 ###                                                                                                ###
@@ -57,7 +56,7 @@ use constant MYTHPASS       => "mythtv";
 ## works only if mythtv user has sufficient permissions to do this
 ## set a valid value /bin/chown would accept, eg. "reznor:users"
 ## setting ownership after encoding will be skipped if this variable is empty
-my $fileOwner       = "1000:1002";
+my $fileOwner       = "";
 
 ## directory to store temp files in
 ## if it does not exist it will be created
@@ -140,8 +139,8 @@ getDBConnection();
 ## Verify Starttime
 my ($fileChanId, $fileStartTime) = split /_/, $fileName;
 
-## Replace file extension
-$fileStartTime =~ s/\....//;
+## Replace file extension #fix 0.28 issue %FILE% being passed in was $chanId_$startTime.ts, .ts wasn't being replaced properly
+$fileStartTime =~ s/\.[\w]+$//;
 
 $startTime = $fileStartTime if ($startTime != $fileStartTime);
 
@@ -198,10 +197,6 @@ my $thr;
 if (!$threads || $threads eq '')
 {
     $threads = 'auto';
-}
-else
-{
-    $thr = '--threads=' . $thr;
 }
 
 if(!$encoding || $encoding eq '')
@@ -504,7 +499,7 @@ $cmd = 'nice -n ' . $niceValue . ' ' . $$requiredPrograms{'HandBrakeCLI'} . ' -i
         . ' -o ' . $workDir . '/' . $fileName . '.handbrake.mkv -a ' . $audioTracks . ' -E ' . $audioCodecs . ' -B ' . $audioBitrates
         . ' -A ' . $audioLanguages . ' -f mkv -e ' . $encoding . ' -q ' . $videoQuality
         . ' -x ref=2:bframes=2:subme=6:mixed-refs=0:weightb=0:8x8dct=0:trellis=0:threads=' . $threads . ' -2'
-        . ' -5 -7';
+        . ' -5';
 $cmd    .= ' -T' if($encoding eq "x264");
 $cmd    .= ' --crop 0:0:0:0' if ($noCrop);
 $cmd    .= ' -s scan -F -N ' . $prefLang . ' --native-dub 2>&1';
@@ -734,7 +729,7 @@ sub closeDBConnection
     $db->disconnect or abnormalExit("Can't disconnect from database.");
 }
 
-sub flagCommercials($chanId, $startTime)
+sub flagCommercials
 {
     my ($chanId, $startTime) = @_;
     #######################
